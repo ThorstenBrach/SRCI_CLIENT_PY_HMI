@@ -685,13 +685,14 @@ class RobotService:
                 client.disable(enable, timeout=10.0)
 
     def set_override(self, percent: float) -> None:
-        """Speed override of all motions [%]."""
+        """Speed override of all motions [%]. A parallel command (ExecMode PARALLEL): it also acts
+        while a program, a motion or jogging runs."""
         if not 0.0 < percent <= 100.0:
             raise ValueError(f"override {percent} outside 0 < x <= 100")
         self.override = float(percent)
         if self.connected:
             self.require("ChangeSpeedOverride")
-            with self._command("ChangeSpeedOverride") as client:
+            with self._parallel("ChangeSpeedOverride") as client:
                 self._apply_override(client)
 
     def _apply_override(self, client: SrciClient) -> None:

@@ -338,6 +338,24 @@ def test_interrupt_and_continue_a_program(robot: RobotService) -> None:
     assert out == [1]
 
 
+def test_override_while_a_program_runs(robot: RobotService) -> None:
+    """The override can be changed while a program moves the robot (parallel command)."""
+    robot.set_enabled(True)
+    p = Program()
+    p.add_point([40.0, 0, 0, 0, 0, 0], [0.0] * 6)
+    p.add_point([0.0] * 6, [0.0] * 6)
+    for _ in range(4):  # about 4 s
+        p.add_step("P1", velocity=5.0)
+        p.add_step("P2", velocity=5.0)
+    worker, out = _background(robot.run_program, p, hold=False)
+    time.sleep(0.4)
+    robot.set_override(50.0)  # before: waited for the program, "another command is running"
+    assert worker.is_alive()  # changed while the program runs
+    assert robot.override == 50.0 and robot.snapshot().error == ""
+    worker.join(60.0)
+    assert out == [8]
+
+
 def test_io_and_registers(robot: RobotService) -> None:
     assert len(robot.read_io(0)) == 5 and len(robot.read_io(10, outputs=True)) == 5
     robot.write_output(9, True)

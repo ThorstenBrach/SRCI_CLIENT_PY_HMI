@@ -71,6 +71,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
  - Configuration of the RobotTask via `program.ParCfg` (renamed in SRCI_PY)
 
 ### Fixed
+ - Speed override could not be changed while a program or a motion ran ("ChangeSpeedOverride:
+   another command is running"): it is a parallel command now, like I/O
  - Crash when the page was rebuilt (e.g. language switch) with a tool / frame above the ones the
    select offered at that moment ("Invalid value: 1")
  - The jog pad in dialogs is hidden when the RC can neither jog nor guide by hand
