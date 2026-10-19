@@ -338,8 +338,8 @@ def test_interrupt_and_continue_a_program(robot: RobotService) -> None:
     assert out == [1]
 
 
-def test_override_while_a_program_runs(robot: RobotService) -> None:
-    """The override can be changed while a program moves the robot (parallel command)."""
+def test_parallel_commands_while_a_program_runs(robot: RobotService) -> None:
+    """Override, reading and calculating while a program moves the robot (parallel commands)."""
     robot.set_enabled(True)
     p = Program()
     p.add_point([40.0, 0, 0, 0, 0, 0], [0.0] * 6)
@@ -352,6 +352,12 @@ def test_override_while_a_program_runs(robot: RobotService) -> None:
     robot.set_override(50.0)  # before: waited for the program, "another command is running"
     assert worker.is_alive()  # changed while the program runs
     assert robot.override == 50.0 and robot.snapshot().error == ""
+    # reading and calculating are parallel commands as well (writing stays exclusive)
+    assert robot.read_tools() and robot.read_frames()
+    assert len(robot.read_position(0, 0)) == 6
+    assert len(robot.forward_kinematics(robot.snapshot().joints, 0, 0)) == 6
+    assert robot.read_dh()
+    assert worker.is_alive()  # all of it while the program runs
     worker.join(60.0)
     assert out == [8]
 

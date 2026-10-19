@@ -4,7 +4,8 @@ The UI never talks to :class:`srci.api.SrciClient` directly. This service
 
 * opens the connection (PLC gateway over TCP, or the SRCI SDK simulator for a dry run),
 * runs commands one after the other (``_busy`` lock) - except :meth:`stop`, which always
-  goes through at once,
+  goes through at once, and the parallel commands (override, I/O, registers, reading data,
+  calculations), which also run beside a program or a motion,
 * keeps the actual position up to date (``ReadActualPositionCyclic``, fallback: polling with
   ``ReadActualPosition``),
 * jogs with hold-to-run: a jog key moves only while the browser keeps sending
@@ -345,7 +346,7 @@ class RobotService:
         self._polled: Any = None  # OutCmd of the last ReadActualPosition (fallback)
         self._jog: MC_GroupJogFB | None = None
         self._free: MC_FreeDriveFB | None = None
-        self._io_lock = threading.Lock()  # one parallel read / write (I/O, registers) at a time
+        self._io_lock = threading.RLock()  # one parallel command at a time (I/O, registers, reads ...)
         self._jog_alive = 0.0  # last heartbeat of the held key (jog, move, program)
         self._hold = False  # a motion runs that needs the heartbeat (hold-to-run)
         self._stop_event = threading.Event()  # set by stop(): a running program ends
@@ -734,7 +735,7 @@ class RobotService:
         """Cartesian position of ``tool`` in ``frame`` (ReadActualPosition), e.g. to take the TCP
         as the origin of a new frame."""
         self.require("ReadActualPosition")
-        with self._command("ReadActualPosition") as client:
+        with self._parallel("ReadActualPosition") as client:
             fb = MC_ReadActualPositionFB()
             fb.ParCmd.ToolNo, fb.ParCmd.FrameNo = tool, frame
             c = client.execute(fb, timeout=5.0).OutCmd.ActualCartesianPosition
@@ -743,7 +744,7 @@ class RobotService:
     def read_tools(self) -> list[CoordData]:
         """All tools of the RC (index 0 .. HighestToolIndex, ReadToolData)."""
         self.require("ReadToolData")
-        with self._command("ReadToolData") as client:
+        with self._parallel("ReadToolData") as client:
             highest = _highest(client, "Tool")
             tools = []
             for no in range(highest + 1):
@@ -772,7 +773,7 @@ class RobotService:
     def read_frames(self) -> list[CoordData]:
         """All frames of the RC (index 0 .. HighestFrameIndex, ReadFrameData)."""
         self.require("ReadFrameData")
-        with self._command("ReadFrameData") as client:
+        with self._parallel("ReadFrameData") as client:
             highest = _highest(client, "Frame")
             frames = []
             for no in range(highest + 1):
@@ -1151,14 +1152,17 @@ class RobotService:
     # ------------------------------------------------------------------ I/O and registers
 
     @contextlib.contextmanager
-    def _parallel(self, what: str) -> Iterator[SrciClient]:
-        """A parallel command (I/O, registers): also while a program runs, not beside a command
-        sequence like EnableRobot."""
+    def _parallel(self, what: str, wait: float = 5.0) -> Iterator[SrciClient]:
+        """A parallel command (ExecMode PARALLEL) that neither moves the robot nor changes its
+        configuration: I/O, registers, override, reading data, calculations. Also while a program,
+        a motion or jogging runs; not beside a command sequence like EnableRobot (waits up to
+        ``wait`` s for it). Writing tool / frame / load data, limits, dynamics and system variables,
+        EnableRobot and SetOperationMode stay exclusive (:meth:`_command`) on purpose."""
         if self._phase != Phase.READY:
             raise SrciError(f"{what}: not connected")
         locked = False
         if self._activity is Activity.IDLE:
-            if not self._busy.acquire(timeout=2.0):
+            if not self._busy.acquire(timeout=wait):
                 raise SrciError(f"{what}: another command is running")
             locked = True
         try:
@@ -1214,7 +1218,7 @@ class RobotService:
         """All loads of the RC (index 1 .. HighestLoadIndex, ReadLoadData; 0 is "no load" and cannot
         be read)."""
         self.require("ReadLoadData")
-        with self._command("ReadLoadData") as client:
+        with self._parallel("ReadLoadData") as client:
             highest = _highest(client, "Load")
             loads = []
             for no in range(1, highest + 1):
@@ -1244,7 +1248,7 @@ class RobotService:
     def read_dynamics(self) -> Dynamics:
         """Default and reference dynamics of the RC (ReadRobotDefault/ReferenceDynamics)."""
         self.require("ReadRobotDefaultDynamics", "ReadRobotReferenceDynamics")
-        with self._command("ReadRobotDynamics") as client:
+        with self._parallel("ReadRobotDynamics") as client:
             d = client.execute(MC_ReadRobotDefaultDynamicsFB(), timeout=5.0).OutCmd.DynamicValues
             r = client.execute(MC_ReadRobotReferenceDynamicsFB(), timeout=5.0).OutCmd.DynamicValues
             return Dynamics([d.VelocityRate, d.AccelerationRate, d.DecelerationRate, d.JerkRate],
@@ -1277,7 +1281,7 @@ class RobotService:
     def read_sw_limits(self) -> list[tuple[float, float]]:
         """Software limits J1..J6 (lower, upper) [deg] (ReadRobotSWLimits)."""
         self.require("ReadRobotSWLimits")
-        with self._command("ReadRobotSWLimits") as client:
+        with self._parallel("ReadRobotSWLimits") as client:
             lim = client.execute(MC_ReadRobotSWLimitsFB(), timeout=5.0).OutCmd.LimitValues
             return [(getattr(lim, f"{j}LowerLimit"), getattr(lim, f"{j}UpperLimit")) for j in JOINTS]
 
@@ -1304,7 +1308,7 @@ class RobotService:
         """DH parameters of the robot (ReadDHParameter): alpha, a, d, theta, direction, zero
         position per joint."""
         self.require("ReadDHParameter")
-        with self._command("ReadDHParameter") as client:
+        with self._parallel("ReadDHParameter") as client:
             fb = MC_ReadDHParameterFB()
             fb.ParCmd.ModifiedConvention = modified
             dh = client.execute(fb, timeout=5.0).OutCmd.DHParameter
@@ -1317,7 +1321,7 @@ class RobotService:
         """Read (sub-)parameters of a system variable (ReadSystemVariable, up to 8 per command)."""
         self.require("ReadSystemVariable")
         values: list[sysvars.Value] = []
-        with self._command("ReadSystemVariable") as client:
+        with self._parallel("ReadSystemVariable") as client:
             for chunk in _chunks(subs, 8):
                 fb = MC_ReadSystemVariableFB()
                 fb.ParCmd.RCParameter = rc_param
@@ -1349,7 +1353,7 @@ class RobotService:
     def forward_kinematics(self, joints: list[float], tool: int, frame: int) -> list[float]:
         """Cartesian position of ``joints`` (CalculateForwardKinematic)."""
         self.require("CalculateForwardKinematic")
-        with self._command("CalculateForwardKinematic") as client:
+        with self._parallel("CalculateForwardKinematic") as client:
             fb = MC_CalculateForwardKinematicFB()
             fb.ParCmd.ToolNo, fb.ParCmd.FrameNo = tool, frame
             _set_joints(fb.ParCmd.JointPosition, joints)
@@ -1358,7 +1362,7 @@ class RobotService:
     def inverse_kinematics(self, cartesian: list[float], tool: int, frame: int) -> list[float]:
         """Joint position of a Cartesian position (CalculateInverseKinematic)."""
         self.require("CalculateInverseKinematic")
-        with self._command("CalculateInverseKinematic") as client:
+        with self._parallel("CalculateInverseKinematic") as client:
             fb = MC_CalculateInverseKinematicFB()
             fb.ParCmd.ToolNo, fb.ParCmd.FrameNo = tool, frame
             _set_cart(fb.ParCmd.CartesianPosition, cartesian)
@@ -1371,7 +1375,7 @@ class RobotService:
         if not 1 <= len(positions) <= 6:
             raise ValueError("1..6 positions")
         self.require("CalculateTool")
-        with self._command("CalculateTool") as client:
+        with self._parallel("CalculateTool") as client:
             fb = MC_CalculateToolFB()
             par = fb.ParCmd
             par.Mode, par.ToolNo, par.FrameNo, par.ExternalTCP = mode, tool, frame, external
@@ -1385,7 +1389,7 @@ class RobotService:
         """Frame from taught positions (CalculateFrame, manual 6.9.4): ``positions`` with the keys
         ``Origin``, ``Position_X``, ``Position_XY``, ``OriginShift`` (as the method needs)."""
         self.require("CalculateFrame")
-        with self._command("CalculateFrame") as client:
+        with self._parallel("CalculateFrame") as client:
             fb = MC_CalculateFrameFB()
             par = fb.ParCmd
             par.Mode, par.FrameNo, par.ReferenceFrame = mode, frame, reference
@@ -1399,7 +1403,7 @@ class RobotService:
         """Mirror, rotate or shift a position (ShiftPosition, manual 6.9.6). ``parameter``: point,
         line or plane (X..Rz) of the transformation in ``frame``."""
         self.require("ShiftPosition")
-        with self._command("ShiftPosition") as client:
+        with self._parallel("ShiftPosition") as client:
             fb = MC_ShiftPositionFB()
             par = fb.ParCmd
             par.Mode, par.FrameNo = mode, frame
