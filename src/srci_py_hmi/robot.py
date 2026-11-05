@@ -141,6 +141,13 @@ REGISTERS = 7  # values per Read/WriteIntegers/Reals
 
 BLENDING_NOT_SUPPORTED = 0x8E05  # error of the RC: BlendingMode not supported
 
+COMMAND_WAIT = 5.0  # s a command waits for a running one
+# s EnableRobot may take: JAKA SRCI User Manual V3, EnableRobot: about 5 s, about 20 s after an
+# emergency stop (the robot powers on first) - plus a margin. Commands that do not move the robot
+# wait this long for a running EnableRobot; a motion never waits longer than COMMAND_WAIT, it must
+# not start long after the click.
+ENABLE_TIME = 25.0
+
 JOG_WATCHDOG = 0.5  # s without jog_alive() -> the jog stops
 JOG_AXES = ("X_J1", "Y_J2", "Z_J3", "Rx_J4", "Ry_J5", "Rz_J6")
 
@@ -304,6 +311,7 @@ class Snapshot:
     # functions the RC reports in RCSupportedFunctions (ReadRobotData); None = not known yet
     supported: frozenset[str] | None = None
     forced_core: bool = False  # the Core functions are forced (ForceCoreFunctions), not reported
+    enabling: bool = False  # EnableRobot (switching on) runs
     interrupted: bool = False  # motions paused (GroupInterrupt) - continue with GroupContinue
     secondary: bool = False  # secondary sequence active (jogged away from the interrupted path)
     in_primary_pos: bool = True  # robot is on the interrupted path again
@@ -369,6 +377,7 @@ class RobotService:
         self._activity = Activity.IDLE
         self._error = ""
         self._busy = threading.RLock()  # one command sequence at a time (not stop)
+        self._enabling = False  # EnableRobot (switching on) runs
         self._state = threading.Lock()  # phase / activity / error
         self._poll_lock = threading.Lock()  # one ReadActualPosition at a time
         self._enable: MC_EnableRobotFB | None = None
@@ -451,6 +460,7 @@ class RobotService:
         s.highest_tool, s.highest_frame = _highest(client, "Tool"), _highest(client, "Frame")
         s.supported = self.supported()
         s.forced_core = self._force_core
+        s.enabling = self._enabling
         current = self._current
         if current is not None and self._activity is Activity.RUNNING:
             s.progress = float(getattr(current.OutCmd, "Progress", -1.0))
@@ -656,15 +666,21 @@ class RobotService:
         status = client.program.axes_group.State.StatusRobotArm
         return status.RaSequenceState == RaSequenceState.INTERRUPTED or bool(status.PrimarySequencePaused)
 
+    def _acquire(self, wait: float, patient: bool) -> bool:
+        """Take the lock of the command sequences; ``patient``: also waits for a running EnableRobot."""
+        if self._busy.acquire(timeout=wait):
+            return True
+        return patient and self._enabling and self._busy.acquire(timeout=ENABLE_TIME)
+
     @contextlib.contextmanager
     def _command(
-        self, what: str, activity: Activity | None = None, wait: float = 5.0, *, while_paused: bool = False
+        self, what: str, activity: Activity | None = None, wait: float = COMMAND_WAIT, *, while_paused: bool = False
     ) -> Iterator[SrciClient]:
         """Exclusive use of the client for a command sequence; waits up to ``wait`` s for a running
         one (e.g. reading the tool table after connecting). ``while_paused``: also while a program
         is interrupted (it holds the lock and only waits for its motion) - jog, hand guiding and
         ReturnToPrimary in the secondary sequence."""
-        if not self._busy.acquire(timeout=wait):
+        if not self._acquire(wait, activity is None and wait >= COMMAND_WAIT):
             if while_paused and self.program_paused():
                 client = self.client
                 try:
@@ -699,8 +715,22 @@ class RobotService:
             self._set(error="")
 
     def set_enabled(self, on: bool) -> None:
-        """Switch the robot on (EnableRobot) or off."""
+        """Switch the robot on (EnableRobot) or off. While it is switching on, a further request to
+        switch on is ignored (the robot is not enabled yet, the switch can be pressed again)."""
         self.require("EnableRobot")
+        if not on:
+            self._switch_power(False)
+            return
+        with self._state:
+            if self._enabling:
+                return
+            self._enabling = True
+        try:
+            self._switch_power(True)
+        finally:
+            self._enabling = False
+
+    def _switch_power(self, on: bool) -> None:
         with self._command("EnableRobot") as client:
             if on:
                 if self._enable is None:
@@ -710,7 +740,7 @@ class RobotService:
                         client.execute(MC_GroupResetFB(), timeout=10.0)
                     enable = MC_EnableRobotFB()
                     try:
-                        client.enable(enable, timeout=15.0)
+                        client.enable(enable, timeout=ENABLE_TIME)
                     except BaseException:
                         with contextlib.suppress(Exception):
                             client.disable(enable, timeout=3.0)
@@ -1188,17 +1218,18 @@ class RobotService:
     # ------------------------------------------------------------------ I/O and registers
 
     @contextlib.contextmanager
-    def _parallel(self, what: str, wait: float = 5.0) -> Iterator[SrciClient]:
+    def _parallel(self, what: str, wait: float = COMMAND_WAIT) -> Iterator[SrciClient]:
         """A parallel command (ExecMode PARALLEL) that neither moves the robot nor changes its
         configuration: I/O, registers, override, reading data, calculations. Also while a program,
         a motion or jogging runs; not beside a command sequence like EnableRobot (waits up to
-        ``wait`` s for it). Writing tool / frame / load data, limits, dynamics and system variables,
+        ``wait`` s for it, for EnableRobot up to :data:`ENABLE_TIME`). Writing tool / frame / load
+        data, limits, dynamics and system variables,
         EnableRobot and SetOperationMode stay exclusive (:meth:`_command`) on purpose."""
         if self._phase != Phase.READY:
             raise SrciError(f"{what}: not connected")
         locked = False
         if self._activity is Activity.IDLE:
-            if not self._busy.acquire(timeout=wait):
+            if not self._acquire(wait, True):
                 raise SrciError(f"{what}: another command is running")
             locked = True
         try:

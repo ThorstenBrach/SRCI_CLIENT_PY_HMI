@@ -1299,7 +1299,7 @@ class Pendant:
         self.connect_spinner.set_visibility(s.phase is Phase.CONNECTING)
         self.conn_error.set_text(s.error)
         self.conn_error.set_visibility(bool(s.error) and s.phase in (Phase.FAILED, Phase.LOST))
-        self.power.set_enabled(ready and s.can("EnableRobot"))
+        self.power.set_enabled(ready and s.can("EnableRobot") and not s.enabling)
         if s.supported != old.supported or s.forced_core != old.forced_core:
             self.draw_caps.refresh()
         if self.power.value != s.enabled:

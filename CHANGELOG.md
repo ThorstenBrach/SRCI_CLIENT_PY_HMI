@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+ - No more "another command is running" while the robot switches on: reading commands, the
+   override and acknowledging wait for a running EnableRobot (about 5 s on a JAKA, about 20 s
+   after an emergency stop), the power switch is locked meanwhile and a further request to switch
+   on is ignored. EnableRobot may take up to 25 s (before 15 s). Motions keep the short wait
+
 ### Added
  - Option "Force Core functions" on the connection page (default off, remembered): the functions
    of the Core profile (spec table 5-2) count as supported, whatever the RC reports in
