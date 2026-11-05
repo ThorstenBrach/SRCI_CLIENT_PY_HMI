@@ -117,7 +117,9 @@ from srci_py_hmi.model import CARTESIAN, JOINTS, Motion, Point, Program, Step, S
 
 log = logging.getLogger("srci_py_hmi.robot")
 
-# functions of the profile "Core" (spec chapter 6) - shown on the connection page
+# functions of the profile "Core" with a bit in RCSupportedFunctions - shown on the connection page.
+# Spec V1.5.9, table 5-2; RobotTask, CreateServerLog, ReadServerLog, CreateClientLog and ReadClientLog
+# of that table have no bit. The JAKA firmware 1.7.1 reported exactly these 28 bits (254/255/255/31).
 CORE_FUNCTIONS = (
     "ReadRobotData", "EnableRobot", "GroupReset", "ReadActualPosition", "ReadActualPositionCyclic",
     "ExchangeConfiguration", "SetSequence", "ChangeSpeedOverride", "ReadMessages",
@@ -141,6 +143,30 @@ BLENDING_NOT_SUPPORTED = 0x8E05  # error of the RC: BlendingMode not supported
 
 JOG_WATCHDOG = 0.5  # s without jog_alive() -> the jog stops
 JOG_AXES = ("X_J1", "Y_J2", "Z_J3", "Rx_J4", "Ry_J5", "Rz_J6")
+
+
+class ForceCoreFunctions:
+    """Program block: the functions of the profile "Core" count as supported, whatever the RC reports.
+
+    For robot controllers that report no RCSupportedFunctions although they execute the commands
+    (JAKA firmware 3.3.15: all bits 0). MC_RobotTaskFB copies the reported bits into the AxesGroup
+    in every call, so this block has to be the first one of the program: it runs in every cycle
+    before the command function blocks check the bits and is overwritten afterwards. HandleSync of
+    the RobotTask runs behind that copy and keeps seeing what the RC reports.
+    """
+
+    def __init__(self) -> None:
+        self.active = False
+
+    def __call__(self, *, AxesGroup: Any, **_: Any) -> None:
+        if not AxesGroup.State.Initialized:
+            return
+        functions = AxesGroup.State.RobotData.RCSupportedFunctions
+        for name in CORE_FUNCTIONS:
+            setattr(functions, name, True)
+        if not self.active:
+            self.active = True
+            log.warning("Core functions forced: RCSupportedFunctions of the RC are ignored for them")
 
 
 class NotSupportedError(SrciError):
@@ -190,6 +216,8 @@ class Target:
     # LifeSign timeout [ms]: 50 is the spec default; the JAKA MiniCobo needs >= 300 (no LifeSign for
     # ~200 ms while it switches the drives off after a rejected command)
     lifesign_ms: int = 500
+    # the functions of the profile "Core" count as supported, whatever the RC reports (ForceCoreFunctions)
+    force_core: bool = False
 
     @property
     def kind(self) -> str:
@@ -275,6 +303,7 @@ class Snapshot:
     highest_frame: int = 0
     # functions the RC reports in RCSupportedFunctions (ReadRobotData); None = not known yet
     supported: frozenset[str] | None = None
+    forced_core: bool = False  # the Core functions are forced (ForceCoreFunctions), not reported
     interrupted: bool = False  # motions paused (GroupInterrupt) - continue with GroupContinue
     secondary: bool = False  # secondary sequence active (jogged away from the interrupted path)
     in_primary_pos: bool = True  # robot is on the interrupted path again
@@ -335,6 +364,7 @@ class RobotService:
         self._transport: Transport | None = None
         self._stack = contextlib.ExitStack()
         self._target = Target()
+        self._force_core = False  # option of the current connection (Target.force_core)
         self._phase = Phase.DISCONNECTED
         self._activity = Activity.IDLE
         self._error = ""
@@ -420,6 +450,7 @@ class RobotService:
         s.joints, s.cartesian, s.position_valid = joints, cartesian, valid
         s.highest_tool, s.highest_frame = _highest(client, "Tool"), _highest(client, "Frame")
         s.supported = self.supported()
+        s.forced_core = self._force_core
         current = self._current
         if current is not None and self._activity is Activity.RUNNING:
             s.progress = float(getattr(current.OutCmd, "Progress", -1.0))
@@ -441,6 +472,8 @@ class RobotService:
             return None
         funcs = client.program.axes_group.State.RobotData.RCSupportedFunctions
         names = frozenset(f.name for f in dataclasses.fields(funcs) if getattr(funcs, f.name) is True)
+        if self._force_core:  # the bits in the AxesGroup are only set during a cycle
+            names |= frozenset(CORE_FUNCTIONS)
         return names or None
 
     def can(self, function: str) -> bool:
@@ -523,6 +556,9 @@ class RobotService:
         cfg = client.program.ParCfg
         cfg.Com.LifeSignTimeOut = target.lifesign_ms
         cfg.Rob.Parameter.MessageLevel = MessageLevel.WARNING
+        self._force_core = target.force_core
+        if target.force_core:
+            client.program.add(ForceCoreFunctions())  # the first block: before all command blocks
         if self.plc_log:
             client.program.external_logger = PythonLogger()
             client.program.log_level = Severity.DEBUG

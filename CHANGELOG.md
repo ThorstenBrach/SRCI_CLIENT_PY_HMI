@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
+ - Option "Force Core functions" on the connection page (default off, remembered): the functions
+   of the Core profile (spec table 5-2) count as supported, whatever the RC reports in
+   RCSupportedFunctions. For controllers that report no bits but execute the commands (JAKA
+   firmware 3.3.15, built on an SDK whose `rcSupportedFunctions` is always 0). Logs a warning, the
+   capabilities card shows a banner while it is active; the data synchronization is not affected
  - Connection over **OPC UA** (PLC bridge or robot controller with OPC UA server): endpoint,
    optional user / password, the two telegram nodes; configurator "Browse server" lists the
    variables of the server and takes the nodes and the telegram length; settings (without the

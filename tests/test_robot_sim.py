@@ -7,15 +7,16 @@ and install its Python package ``pip install -e "<SRCI SDK>/srci_py_harness/pyth
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import threading
 import time
 from collections.abc import Iterator
 
 import pytest
-from srci.types import JogMode
+from srci.types import JogMode, SyncMode
 
 from srci_py_hmi.model import Motion, Program
-from srci_py_hmi.robot import Activity, Phase, RobotService, Target
+from srci_py_hmi.robot import CORE_FUNCTIONS, Activity, NotSupportedError, Phase, RobotService, Target
 
 sdk = pytest.importorskip("srci_sdk_sim.sdk")  # private SRCI SDK package
 try:
@@ -423,3 +424,47 @@ def test_operation_mode_and_hand_guiding(robot: RobotService) -> None:
     assert robot.snapshot().activity is Activity.FREE_DRIVE
     time.sleep(3.5)  # no heartbeat: the watchdog ends the hand guiding (the sim needs ~2 s to disable)
     assert robot.snapshot().activity is Activity.IDLE
+
+
+def report_no_functions(r: RobotService) -> None:
+    """The RC reports no RCSupportedFunctions (JAKA firmware 3.3.15): the RobotTask copies the bits
+    of its ReadRobotData into the AxesGroup in every cycle."""
+    bits = r.client.program.robot_task._readRobotData.OutCmd.RCSupportedFunctions
+    for f in dataclasses.fields(bits):
+        if f.name not in ("ReadRobotData", "ExchangeConfiguration", "ReadMessages"):  # always TRUE (library)
+            setattr(bits, f.name, False)
+    time.sleep(0.1)
+
+
+def test_rc_without_function_bits_blocks_commands(robot: RobotService) -> None:
+    report_no_functions(robot)
+    s = robot.snapshot()
+    assert not s.forced_core
+    assert s.supported is not None and "MoveDirectAbsolute" not in s.supported
+    with pytest.raises(NotSupportedError):
+        robot.require("MoveDirectAbsolute")
+
+
+def test_force_core_runs_commands_although_the_rc_reports_no_bits() -> None:
+    r = RobotService()
+    r.connect(Target(simulator=True, force_core=True))
+    try:
+        report_no_functions(r)
+        s = r.snapshot()
+        assert s.forced_core
+        assert s.supported is not None and set(CORE_FUNCTIONS) <= s.supported
+        assert "MoveCircularAbsolute" not in s.supported  # only the profile Core
+        r.reset()
+        r.set_enabled(True)  # checked by the function blocks in the cycle, not only by the service
+        assert r.snapshot().enabled
+        p = Program()
+        p.add_point([10.0, 20.0, 30.0, 0.0, 45.0, 0.0], [0.0] * 6)
+        r.move_to(p.points[0], hold=False)
+        assert joints(r) == [10.0, 20.0, 30.0, 0.0, 45.0, 0.0]
+        r.set_enabled(False)
+        program = r.client.program
+        assert not program.robot_task.Error
+        modes = program.ParCfg.Plc.Parameter.SynchronizationModes
+        assert all(m == SyncMode.NO_SYNCHRONIZATION for m in modes.Tool + modes.Frame + modes.Load)
+    finally:
+        r.disconnect()

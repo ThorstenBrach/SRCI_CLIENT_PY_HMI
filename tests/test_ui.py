@@ -56,7 +56,11 @@ async def run_user(user: User, ws: Workspace) -> None:
     user.find(kind=ui.button, content="Verbinden").click()
     await wait_for(lambda: ws.robot.snapshot().phase is Phase.READY)
     await user.should_see("SRCI_PY SimRobot")
-    user.find(kind=ui.switch).click()  # robot on
+    user.find(marker="force-core").click()  # option on and off again: remembered in the target
+    assert ws.target.force_core
+    user.find(marker="force-core").click()
+    assert not ws.target.force_core
+    user.find(marker="power").click()  # robot on
     await wait_for(lambda: ws.robot.snapshot().enabled)
     user.find(kind=ui.button, content="Bewegen").click()
     user.find(kind=ui.button, content="Punkt teachen").click()

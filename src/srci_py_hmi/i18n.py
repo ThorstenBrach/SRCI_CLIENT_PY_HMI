@@ -244,6 +244,15 @@ TEXTS: dict[str, dict[str, str]] = {
         "de": "Wie lange ein ausbleibendes Lebenszeichen toleriert wird. JAKA: ≥ 300 ms.",
         "en": "How long a missing LifeSign is tolerated. JAKA: ≥ 300 ms.",
     },
+    "conn.force_core": {"de": "Core-Funktionen erzwingen", "en": "Force Core functions"},
+    "conn.force_core_hint": {
+        "de": "Für Steuerungen, die keine RCSupportedFunctions melden (z. B. JAKA Firmware 3.3.15): "
+        "Alle Funktionen des Core-Profils gelten als unterstützt, egal was die Steuerung meldet. "
+        "Wirkt beim nächsten Verbinden.",
+        "en": "For controllers that report no RCSupportedFunctions (e.g. JAKA firmware 3.3.15): all "
+        "functions of the Core profile count as supported, whatever the controller reports. "
+        "Takes effect with the next connection.",
+    },
     "blend.EXACT_STOP": {"de": "Genauhalt", "en": "Exact stop"},
     "blend.CORNER_DISTANCE": {"de": "Eckabstand", "en": "Corner distance"},
     "blend.CORNER_DISTANCE_1R": {"de": "Eckabstand, ein Radius", "en": "Corner distance, one radius"},
@@ -263,6 +272,10 @@ TEXTS: dict[str, dict[str, str]] = {
     "caps.unknown": {
         "de": "Wird beim Verbinden von der Robotersteuerung gelesen.",
         "en": "Read from the robot controller when connecting.",
+    },
+    "caps.forced": {
+        "de": "Core-Funktionen erzwungen: Die Anzeige zeigt nicht, was die Steuerung meldet.",
+        "en": "Core functions forced: this list does not show what the controller reports.",
     },
     "caps.summary": {"de": "{n} von {total} Core-Funktionen", "en": "{n} of {total} core functions"},
     "caps.more": {

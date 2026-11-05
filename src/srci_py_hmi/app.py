@@ -72,6 +72,7 @@ def main(argv: list[str] | None = None) -> None:
         # the LifeSign timeout set in the UI is kept for the next start (unless --lifesign is given)
         if args.lifesign is None:
             ws.target.lifesign_ms = int(app.storage.general.get("lifesign_ms", ws.target.lifesign_ms))
+        ws.target.force_core = bool(app.storage.general.get("force_core", False))
         # OPC UA settings of the UI (endpoint, nodes, user; never the password), the command line wins
         target.restore_opcua(app.storage.general.get("opcua"))
         if args.opcua:

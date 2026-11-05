@@ -537,6 +537,17 @@ class Pendant:
                             target.lifesign_ms if target.lifesign_ms in (100, 250, 500, 1000) else None
                         )
                     ui.label(self.tr("conn.lifesign_hint")).classes("tp-muted mt-1")
+                    with ui.element("div").classes("tp-row mt-4"):
+                        ui.label(self.tr("conn.force_core")).classes("text-[17px] font-medium")
+
+                        def set_force_core(value: bool) -> None:
+                            target.force_core = value
+                            app.storage.general["force_core"] = value
+
+                        ui.switch(
+                            value=target.force_core, on_change=lambda e: set_force_core(bool(e.value))
+                        ).props("color=warning").mark("force-core")
+                    ui.label(self.tr("conn.force_core_hint")).classes("tp-muted mt-1")
                     with ui.row().classes("w-full items-center mt-5 gap-3"):
                         self.connect_btn = (
                             ui.button(self.tr("conn.connect"), on_click=self.connect)
@@ -550,8 +561,10 @@ class Pendant:
                     with self.card(self.tr("power.title")):
                         with ui.element("div").classes("tp-row"):
                             ui.label(self.tr("power.enable")).classes("text-[17px] font-medium")
-                            self.power = ui.switch(on_change=lambda e: self.set_power(bool(e.value))).props(
-                                "color=positive"
+                            self.power = (
+                                ui.switch(on_change=lambda e: self.set_power(bool(e.value)))
+                                .props("color=positive")
+                                .mark("power")
                             )
                         with ui.element("div").classes("tp-tiles my-2"):
                             self.tiles = {key: ui.label(self.tr(f"tile.{key}")).classes("tp-tile")
@@ -634,6 +647,8 @@ class Pendant:
         if supported is None:
             ui.label(self.tr("caps.unknown")).classes("tp-muted")
             return
+        if self.snap.forced_core:
+            ui.label(self.tr("caps.forced")).classes("tp-banner mb-2 w-full").mark("caps-forced")
         core = [f for f in CORE_FUNCTIONS if f in supported]
         ui.label(self.tr("caps.summary", n=len(core), total=len(CORE_FUNCTIONS))).classes("font-medium mb-2")
         with ui.element("div").classes("flex flex-wrap gap-1"):
@@ -1285,7 +1300,7 @@ class Pendant:
         self.conn_error.set_text(s.error)
         self.conn_error.set_visibility(bool(s.error) and s.phase in (Phase.FAILED, Phase.LOST))
         self.power.set_enabled(ready and s.can("EnableRobot"))
-        if s.supported != old.supported:
+        if s.supported != old.supported or s.forced_core != old.forced_core:
             self.draw_caps.refresh()
         if self.power.value != s.enabled:
             self.power.set_value(s.enabled)  # set_power() ignores it (no change)
