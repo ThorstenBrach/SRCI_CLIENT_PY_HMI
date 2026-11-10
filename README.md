@@ -1,5 +1,7 @@
 # SRCI_PY_HMI – teach pendant for setting up and teaching SRCI robots
 
+**Documentation in the wiki:** [Teach pendant](https://github.com/ThorstenBrach/SRCI/wiki/HMI-Introduction) · [Operating manual](https://github.com/ThorstenBrach/SRCI/wiki/HMI-OperatingManual) · [SRCI user manual](https://github.com/ThorstenBrach/SRCI/wiki)
+
 A tablet-style web user interface (NiceGUI) on top of the Python client
 [`srci`](https://github.com/ThorstenBrach/SRCI_CLIENT_PY) (SRCI_PY). It connects to the robot
 through the PLC gateway, switches it on, jogs it, teaches points and runs programs made of them.
