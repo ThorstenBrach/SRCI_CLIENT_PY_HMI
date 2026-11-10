@@ -168,3 +168,7 @@ CODESYS and Python; the HMI then becomes a pure user interface over OPC UA:
 ## Changes
 
 [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+[![Donate with PayPal](https://raw.githubusercontent.com/stefan-niedermann/paypal-donate-button/master/paypal-donate-button.png)](https://www.paypal.com/donate/?hosted_button_id=ERN6VH9WA95J6)
