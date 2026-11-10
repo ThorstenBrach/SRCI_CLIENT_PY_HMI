@@ -74,7 +74,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changed
  - SDK simulator from the private SDK package `srci_sdk_sim` (moved out of the client `srci.sim.sdk`):
-   `pip install -e "..\SRCI SDK\srci_py_harness\python" --no-deps` for `--simulator` and the tests
+   `pip install -e "..\SRCI_SERVER_SDK\srci_py_harness\python" --no-deps` for `--simulator` and the tests
  - README and operating manual (docs/OPERATING_MANUAL.md) in English, screenshots of the English user interface
  - Renamed from SRCI Teach to SRCI_PY_HMI: distribution `srci-py-hmi`, package `srci_py_hmi`,
    command `srci-hmi`. The key file of the stored settings is taken over

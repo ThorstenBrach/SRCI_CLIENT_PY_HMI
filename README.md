@@ -143,7 +143,7 @@ ruff check . && mypy
 
 The SRCI SDK is licensed and does not belong in this repository (see `.gitignore`). Its Python
 package `srci_sdk_sim` (simulator for `--simulator` and the tests) is installed from the private SDK:
-`pip install -e "..\SRCI SDK\srci_py_harness\python" --no-deps`.
+`pip install -e "..\SRCI_SERVER_SDK\srci_py_harness\python" --no-deps`.
 
 ## JAKA MiniCobo
 

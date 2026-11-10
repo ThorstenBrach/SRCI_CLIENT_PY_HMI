@@ -1,6 +1,6 @@
 """The robot service against the SRCI SDK simulator (skipped without the SDK library).
 
-The SDK is licensed and not part of this repository: build it in ``SRCI SDK/srci_py_harness``
+The SDK is licensed and not part of this repository: build it in ``SRCI_SERVER_SDK/srci_py_harness``
 and install its Python package ``pip install -e "<SRCI SDK>/srci_py_harness/python"``.
 """
 
