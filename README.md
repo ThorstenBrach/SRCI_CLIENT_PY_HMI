@@ -52,12 +52,12 @@ and dark theme.
 ## Installation
 
 ```bat
-cd D:\Projekte\SRCI\SRCI_PY_HMI
+cd D:\Projekte\SRCI\SRCI_CLIENT_PY_HMI
 python -m venv .venv
 .venv\Scripts\activate
-pip install -e ..\SRCI_PY
+pip install -e ..\SRCI_CLIENT_PY
 pip install -e .[dev]
-pip install -e ..\SRCI_PY[opcua]           :: only for OPC UA (package asyncua)
+pip install -e ..\SRCI_CLIENT_PY[opcua]           :: only for OPC UA (package asyncua)
 ```
 
 ## Start
