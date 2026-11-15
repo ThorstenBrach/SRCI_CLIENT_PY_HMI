@@ -54,12 +54,14 @@ and dark theme.
 ## Installation
 
 ```bat
-cd D:\Projekte\SRCI\SRCI_CLIENT_PY_HMI
+cd SRCI_CLIENT_PY_HMI
 python -m venv .venv
 .venv\Scripts\activate
-pip install -e ..\SRCI_CLIENT_PY
+pip install srci-client[opcua]                  :: the SRCI client from PyPI (opcua: OPC UA transport, package asyncua)
 pip install -e .[dev]
-pip install -e ..\SRCI_CLIENT_PY[opcua]           :: only for OPC UA (package asyncua)
+
+:: development against a local checkout of the client instead of PyPI:
+pip install -e ..\SRCI_CLIENT_PY_DEV\client[opcua]
 ```
 
 ## Start
@@ -150,7 +152,7 @@ package `srci_sdk_sim` (simulator for `--simulator` and the tests) is installed 
 ## JAKA MiniCobo
 
 Tested with a JAKA MiniCobo (controller 1.7.1, SRCI 1.1, profile Core only), see
-`SRCI_PY/examples/jaka_minicobo`:
+[examples/jaka_minicobo](https://github.com/ThorstenBrach/SRCI_CLIENT_PY/tree/main/examples/jaka_minicobo) of the client:
 
 - LIN and PTP steps are sent with TurnMode FREE and ConfigMode FREE (the MiniCobo accepts TurnMode
   only as FREE, ConfigMode as SAME or FREE).
