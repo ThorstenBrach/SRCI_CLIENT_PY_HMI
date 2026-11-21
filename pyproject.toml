@@ -12,7 +12,7 @@ authors = [{ name = "Thorsten Brach" }]
 requires-python = ">=3.12"
 dependencies = [
     "srci-client",  # SRCI_CLIENT_PY (package srci), PyPI or pip install -e ..\SRCI_CLIENT_PY_DEV\client
-    "nicegui>=3.0,<4",
+    "nicegui>=3.0,<5",
 ]
 
 [project.optional-dependencies]
